@@ -6,6 +6,7 @@ import SessionStore from '../store';
 import SessionsManager from '../core/sessions';
 import ServersManager from '../core/servers';
 import Database from '../database';
+import Resolver from '../resolver';
 
 // Debugger
 const D = debug('UnicornLoadBalancer');
@@ -58,10 +59,38 @@ RoutesAPI.ffmpegStatus = async (req, res) => {
     }));
 };
 
-// Resolve path from file id
-RoutesAPI.path = (req, res) => {
+// Resolve path from file id (DEPRECATED)
+RoutesAPI.pathDeprecated = (req, res) => {
     Database.getPartFromId(req.params.id).then((data) => {
         res.send(JSON.stringify(data));
+    }).catch((err) => {
+        res.status(400).send({ error: { code: 'FILE_NOT_FOUND', message: 'File not found in Plex Database' } });
+    })
+};
+
+// Resolve path from file id
+RoutesAPI.path = (req, res) => {
+    Database.getPartFromId(req.params.id).then(async (data) => {
+        let file = {
+            type: 'LOCAL',
+            path: data.file,
+            direct: false,
+        }
+        try {
+            const canResolve = await Resolver.canResolve(data.file);
+            if (canResolve) {
+                const resolved = await Resolver.resolve(data.file);
+                if (resolved)
+                    file = resolved;
+            }
+        } catch (e) {
+            file = {
+                type: 'LOCAL',
+                path: data.file,
+                direct: false,
+            }
+        }
+        res.send(JSON.stringify(file));
     }).catch((err) => {
         res.status(400).send({ error: { code: 'FILE_NOT_FOUND', message: 'File not found in Plex Database' } });
     })

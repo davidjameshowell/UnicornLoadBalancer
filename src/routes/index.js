@@ -16,7 +16,8 @@ export default (app) => {
     app.get('/api/stats', RoutesAPI.stats);
     app.post('/api/ffmpeg', RoutesAPI.ffmpeg);
     app.get('/api/ffmpeg/:id', RoutesAPI.ffmpegStatus);    
-    app.get('/api/path/:id', RoutesAPI.path);
+    app.get('/api/path/:id', RoutesAPI.pathDeprecated); // Deprecated
+    app.get('/api/path_v2/:id', RoutesAPI.path);
     app.post('/api/update', RoutesAPI.update);
     app.get('/api/session/:session', RoutesAPI.session);
     app.patch('/api/optimize/:session', RoutesAPI.optimize);
@@ -44,12 +45,7 @@ export default (app) => {
     app.get('/:/timeline', RoutesTranscode.timeline);
 
     // Download
-    if (config.custom.download.forward) {
-        app.get('/library/parts/:id1/:id2/file.*', RoutesTranscode.redirect);
-    }
-    if (!config.custom.download.forward) {
-        app.get('/library/parts/:id1/:id2/file.*', RoutesTranscode.download);
-    }
+    app.get('/library/parts/:id1/:id2/file.*', RoutesTranscode.download);
 
     // Image Proxy or Image Resizer
     if (config.custom.image.proxy && config.custom.image.resizer) {

@@ -3,6 +3,9 @@ import fetch from 'node-fetch';
 import RoutesProxy from './proxy';
 import Database from '../database';
 import SessionsManager from '../core/sessions';
+import path from 'path';
+import Resolver from '../resolver';
+import config from '../config';
 
 // Debugger
 const D = debug('UnicornLoadBalancer');
@@ -167,12 +170,49 @@ RoutesTranscode.stop = async (req, res) => {
 /* Route download */
 RoutesTranscode.download = (req, res) => {
     D('DOWNLOAD ' + req.params.id1 + ' [LB]');
-    Database.getPartFromId(req.params.id1).then((data) => {
-        res.sendFile(data.file, {}, (err) => {
-            if (err && err.code !== 'ECONNABORTED')
-                D('DOWNLOAD FAILED ' + req.params.id1 + ' [LB]');
-        })
+    Database.getPartFromId(req.params.id1).then(async (data) => {
+        let file = {
+            type: 'LOCAL',
+            path: data.file,
+            direct: false,
+        }
+        try {
+            const canResolve = await Resolver.canResolveLocal(data.file);
+            if (canResolve) {
+                const resolved = await Resolver.resolveLocal(data.file);
+                if (resolved)
+                    file = resolved;
+            }
+        } catch (e) {
+            console.log(e);
+            file = {
+                type: 'LOCAL',
+                path: data.file,
+                direct: false,
+            }
+        }
+        // Local file, not available on transcoders, serve
+        if (file.type === 'LOCAL' && !config.custom.medias.replicated) {
+            res.download(data.file, path.basename(data.file), (err) => {
+                if (err && err.code !== 'ECONNABORTED')
+                    D('DOWNLOAD FAILED ' + req.params.id1 + ' [LB]');
+            })
+        }
+        // Local file, available on transcoders, 302 to a transcoder
+        else if (file.type === 'LOCAL' && config.custom.medias.replicated) {
+            RoutesTranscode.redirect(req, res);
+        }
+        // URL 302
+        else if (file.type === 'URL' && file.direct) {
+            res.redirect(302, file.path);
+            D('REDIRECT ' + file.path);
+        }
+        // Proxy file
+        else if (file.type === 'URL' && !file.direct) {
+            RoutesTranscode.redirect(req, res);
+        }
     }).catch((err) => {
+        console.log(err)
         res.status(400).send({ error: { code: 'NOT_FOUND', message: 'File not available' } });
     })
 };

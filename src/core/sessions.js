@@ -7,6 +7,7 @@ import ServersManager from './servers';
 import Database from '../database';
 import fetch from 'node-fetch';
 import uniqid from 'uniqid';
+import Resolver from '../resolver';
 
 // Debugger
 const D = debug('UnicornLoadBalancer');
@@ -120,14 +121,18 @@ SessionsManager.parseFFmpegParameters = async (args = [], env = {}, optimizeMode
             continue;
         }
 
-        // Link resolver (Replace filepath to http plex path)
-        if (i > 0 && parsedArgs[i - 1] === '-i' && !config.custom.download.forward) {
+        // Link resolver (Use Resolver class to replace path to get http if available)
+        if (i > 0 && parsedArgs[i - 1] === '-i') {
             let file = parsedArgs[i];
             try {
-                const data = await Database.getPartFromPath(parsedArgs[i]);
-                if (typeof (data.id) !== 'undefined')
-                    file = `${publicUrl()}library/parts/${data.id}/0/file.stream?download=1`;
+                const canResolve = await Resolver.canResolve(parsedArgs[i]);
+                if (canResolve) {
+                    const resolved = await Resolver.resolve(parsedArgs[i]);
+                    if (resolved)
+                        file = resolved.path;
+                }
             } catch (e) {
+                console.log(e);
                 file = parsedArgs[i]
             }
             finalArgs.push(file);
@@ -147,8 +152,10 @@ SessionsManager.parseFFmpegParameters = async (args = [], env = {}, optimizeMode
     });
 };
 
-// Store the FFMPEG parameters in RedisCache
-SessionsManager.saveSession = (parsed) => {
+// Store the FFMPEG parameters in SessionStore
+SessionsManager.storeFFmpegParameters = async (args, env) => {
+    const parsed = await SessionsManager.parseFFmpegParameters(args, env);
+    D('FFMPEG ' + parsed.session + ' ' + JSON.stringify(parsed));
     SessionStore.set(parsed.session, parsed).then(() => { }).catch(() => { })
 };
 
